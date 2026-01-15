@@ -1,0 +1,32 @@
+# project/config.yaml
+
+pathway:
+  host: "0.0.0.0"
+  port: 8000
+  data_dir: "./data/Books"
+  csv_path: "./data/train.csv"
+
+embedding:
+  model_name: "sentence-transformers/all-MiniLM-L6-v2"
+  dimension: 384
+  
+chunking:
+  size: 512
+  overlap: 50
+
+taxonomy:
+  high_risk: ["Temporal", "Physical", "Existence", "Identity"]
+  medium_risk: ["Ideological", "Relational", "Political"]
+  low_risk: ["Psychological", "Cultural", "Symbolic"]
+
+aggregation:
+  # Lowered from 0.7 to 0.55 to improve Recall
+  consistency_threshold: 0.55
+  
+  # Lowered from 0.4 to 0.3 to reduce "Conservative Bias"
+  uncertainty_threshold: 0.3  
+
+llm:
+  provider: "groq"
+  model: "llama-3.1-8b-instant"
+  api_key: "ACTUAL KEY HERE"

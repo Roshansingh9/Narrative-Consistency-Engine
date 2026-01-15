@@ -1,0 +1,15 @@
+# Core Engine
+pathway
+scikit-learn
+numpy
+
+# LLM & Embedding Support
+sentence-transformers
+torch
+openai
+requests
+
+# Data Processing & Utilities
+pandas
+pyyaml
+tqdm
