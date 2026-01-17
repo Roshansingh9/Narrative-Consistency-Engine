@@ -1,7 +1,7 @@
 # Narrative Consistency via Constraint-Based Multi-Agent Reasoning
 ### Kharagpur Data Science Hackathon 2026 — Track A
 
-**Role:** Senior Research Engineer & Systems Architect  
+
 **Architecture:** Deterministic Constraint Satisfaction over Vector Memory
 
 ---
@@ -113,7 +113,7 @@ python run_inference.py
 
 We employed Grid Search Optimization on an 80/20 Stratified Split of the training data.
 
-**Critical Finding:** Initially, the system was too conservative (Recall ~30%), rejecting valid claims because the evidence wasn't "perfect."
+**Critical Finding:** Initially, the system was too conservative , rejecting valid claims because the evidence wasn't "perfect."
 
 **Adjustment:** The optimizer identified that lowering `consistency_threshold` from 0.70 → 0.45 maximized F1-Score.
 
@@ -152,5 +152,5 @@ project/
 Built for Kharagpur Data Science Hackathon 2026.
 
 * **Engine:** Pathway
-* **LLM Provider:** Groq (Llama-3/Qwen)
+* **LLM Provider:** Groq (Llama-3)
 * **Embeddings:** SentenceTransformers (MiniLM)
