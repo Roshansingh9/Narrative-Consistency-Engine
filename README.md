@@ -16,7 +16,46 @@ This project reads candidate backstory claims and evaluates whether they fit the
 - Deterministic rule gates for final binary decision
 
 ### Problem it solves
-Pure LLM responses can be persuasive but inconsistent. This system reduces hallucination risk by forcing each decision through explicit evidence + rules.
+Narrative consistency checking is harder than standard Q&A retrieval. The goal is not just to find related text, but to make a high-stakes binary decision: "Can this claim coexist with canon without contradiction?"
+
+Why simple RAG is not enough:
+
+- Simple RAG is similarity-first, not consistency-first. It retrieves text that looks relevant, but does not enforce hard narrative constraints like timeline order, death/existence facts, or identity continuity.
+- Retrieved chunks can support both sides of a claim. Without structured adversarial reasoning, a single-pass answer often picks one side without stress-testing contradictions.
+- RAG outputs are probabilistic and prompt-sensitive. For production validation, teams need deterministic acceptance/rejection gates and explicit fallback behavior under uncertainty.
+
+Three core challenges this project addresses:
+
+1. Constraint hierarchy challenge:
+	- Not all contradictions are equal. Temporal, physical, and existence conflicts should be stricter than cultural or psychological claims.
+2. Ambiguous evidence challenge:
+	- Canon text is messy and distributed across long documents. Relevant evidence can be incomplete, conflicting, or weakly phrased.
+3. Decision reliability challenge:
+	- LLM confidence alone is insufficient. The final decision must stay stable across runs and degrade safely when evidence is missing.
+
+This system addresses these by combining risk-tier normalization, adversarial multi-agent debate, and deterministic gate-based aggregation.
+
+### Perposed Solution
+The proposed solution is inspired by the judiciary model, where arguments are not accepted at face value and every decision is tested through opposition, evidence, and final judgment.
+
+In this architecture:
+
+- The Prosecutor challenges the claim and searches for contradictions.
+- The Advocate defends the claim using available narrative evidence.
+- The Judge issues a structured verdict with confidence.
+- A deterministic Aggregation layer applies strict legal-style rules before giving the final binary decision.
+
+This legal philosophy matches the system's conservative behavior: protecting canon integrity is more important than accepting uncertain claims.
+
+Law-inspired principle behind the design:
+
+> "Punishing an innocent is a far greater sin than letting many guilty go free."
+
+English translation of a common Hindi courtroom-style dialogue:
+
+> "Nirdosh ko saza dena, hazaar doshiyon ko chhod dene se bada paap hai."
+
+In practical terms for this project, when evidence is weak or uncertain, the system prefers rejection over risky acceptance.
 
 ### Target users
 
@@ -144,11 +183,11 @@ Step-by-step:
 sequenceDiagram
 	autonumber
 	participant Dev as Operator
-	participant Index as index.py
-	participant FS as data/Books
-	participant Split as BookSplitter
-	participant Emb as embed_text
-	participant VS as VectorStoreServer
+	participant Index as Memory Indexer
+	participant FS as Books Store
+	participant Split as Text Splitter
+	participant Emb as Embedding Service
+	participant VS as Vector Server
 
 	Dev->>Index: Start memory server
 	Index->>FS: Read *.txt files as binary
@@ -178,12 +217,12 @@ Step-by-step:
 sequenceDiagram
 	autonumber
 	participant Dev as Operator
-	participant Infer as run_inference.py
-	participant Norm as normalization.py
-	participant Ret as retrieve.py
-	participant VS as Pathway /v1/retrieve
-	participant Debate as debate.py
-	participant Agg as aggregation.py
+	participant Infer as Inference Orchestrator
+	participant Norm as Normalization Stage
+	participant Ret as Retrieval Stage
+	participant VS as Retrieval API
+	participant Debate as Debate Stage
+	participant Agg as Aggregation Stage
 
 	Dev->>Infer: Run inference
 	Infer->>Infer: Load input CSV and iterate rows
@@ -227,10 +266,10 @@ Step-by-step:
 sequenceDiagram
 	autonumber
 	participant Dev as Operator
-	participant Opt as optimize_thresholds.py
-	participant Pipe as Norm+Retrieve+Debate
-	participant Grid as GridSearch
-	participant CFG as config.yaml
+	participant Opt as Optimizer Script
+	participant Pipe as Pipeline Stage
+	participant Grid as Grid Search
+	participant CFG as Config File
 
 	Dev->>Opt: Run optimizer
 	Opt->>Opt: Load train.csv and map labels
