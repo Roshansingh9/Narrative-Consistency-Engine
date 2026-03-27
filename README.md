@@ -35,7 +35,7 @@ Three core challenges this project addresses:
 
 This system addresses these by combining risk-tier normalization, adversarial multi-agent debate, and deterministic gate-based aggregation.
 
-### Perposed Solution
+### Proposed Solution
 The proposed solution is inspired by the judiciary model, where arguments are not accepted at face value and every decision is tested through opposition, evidence, and final judgment.
 
 In this architecture:
@@ -266,24 +266,24 @@ Step-by-step:
 sequenceDiagram
 	autonumber
 	participant Dev as Operator
-	participant Opt as Optimizer Script
+	participant Optim as Optimizer Script
 	participant Pipe as Pipeline Stage
 	participant Grid as Grid Search
 	participant CFG as Config File
 
-	Dev->>Opt: Run optimizer
-	Opt->>Opt: Load train.csv and map labels
-	Opt->>Opt: Split optimization subset
+	Dev->>Optim: Run optimizer
+	Optim->>Optim: Load train.csv and map labels
+	Optim->>Optim: Split optimization subset
 
 	loop For each training sample
-		Opt->>Pipe: Generate risk + verdict signals
-		Pipe-->>Opt: status confidence risk
+		Optim->>Pipe: Generate risk + verdict signals
+		Pipe-->>Optim: status confidence risk
 	end
 
-	Opt->>Grid: Sweep consistency and uncertainty thresholds
-	Grid-->>Opt: best parameter pair
-	Opt->>CFG: Persist optimized thresholds
-	Opt-->>Dev: Print best accuracy and values
+	Optim->>Grid: Sweep consistency and uncertainty thresholds
+	Grid-->>Optim: best parameter pair
+	Optim->>CFG: Persist optimized thresholds
+	Optim-->>Dev: Print best accuracy and values
 ```
 
 ---
