@@ -2,6 +2,43 @@
 
 > A constraint-aware, multi-agent reasoning system that makes high-stakes binary decisions about whether a proposed narrative claim is **consistent** or **contradictory** with source material — combining vector retrieval, adversarial LLM debate, and deterministic gate logic.
 
+### Sample output — 61 claims across 6 characters from 2 classic novels
+
+| ID | Claim (excerpt) | Prediction | Rationale |
+|----|----------------|-----------|-----------|
+| 2 | *"Paganel learned Spanish on the voyage..."* | **0 — Rejected** | Paganel learned Portuguese thinking it was Spanish |
+| 124 | *"Faria was free in 1815..."* | **0 — Rejected** | Faria was in solitary confinement in the Château d'If in 1815 |
+| 97 | *"Noirtier built immunity to poison over years..."* | **1 — Accepted** | Consistent with his survival and established canon |
+| 59 | *"Thalcave survived by hunting and tracking..."* | **1 — Accepted** | Fits Thalcave's documented skillset and survival capability |
+| 85 | *"Kai-Koumou volunteered to help the captives..."* | **0 — Rejected** | Kai-Koumou kidnapped them — no cooperation was established |
+
+Every prediction ships with a one-sentence rationale grounded in retrieved evidence. Full output: [`results.csv`](results.csv).
+
+---
+
+## Quick start — runs in under 5 minutes
+
+The repo includes a self-contained sample: a short synthetic narrative (`data/Books/The_Chronicles_of_Aldric.txt`) and 5 test claims (`data/test.csv`) with known expected outputs — so you can verify the system end-to-end without sourcing any external data.
+
+```bash
+# Terminal A — start vector memory server
+python pathway_pipeline/index.py
+
+# Terminal B — run inference against sample data
+python run_inference.py
+# → results.csv  (id, prediction, rationale for each claim)
+```
+
+Expected output for the included sample:
+
+| id | Expected | Claim |
+|----|---------|-------|
+| 1 | 1 | Aldric avoided relationships due to grief (Psychological) |
+| 2 | 0 | Aldric was in Meros by 1055 — ten years too early (Temporal) |
+| 3 | 1 | Aldric returned to Meros after release in 1068 (Physical/Existence) |
+| 4 | 0 | Aldric died in the Fortress — contradicts his documented release (Existence) |
+| 5 | 1 | Aldric befriended a learned man in prison (Relational) |
+
 ---
 
 ## Why this exists
@@ -393,6 +430,7 @@ Output: `results.csv` with columns `id`, `prediction` (0/1), `rationale`.
 ├── run_inference.py          # Main pipeline orchestrator
 ├── optimize_thresholds.py    # Grid search threshold calibration
 ├── config.yaml.example
+├── results.csv               # Sample output — 61 claims with rationale
 ├── reasoning/
 │   ├── claims.py             # NarrativeClaim data model
 │   ├── normalization.py      # LLM-based risk tier classification
@@ -407,9 +445,10 @@ Output: `results.csv` with columns `id`, `prediction` (0/1), `rationale`.
 │   ├── wrapper.py            # LLM client abstraction
 │   └── embedder.py           # Lazy-loading embedding singleton
 └── data/
-    ├── Books/                # Source narrative text files
-    ├── train.csv             # Labeled claims for optimization
-    └── test.csv              # Claims for inference
+    ├── Books/
+    │   └── The_Chronicles_of_Aldric.txt   # Sample narrative (synthetic, runnable)
+    ├── train.csv             # Labeled claims for threshold optimization
+    └── test.csv              # 5-row sample — works out of the box
 ```
 
 ---
