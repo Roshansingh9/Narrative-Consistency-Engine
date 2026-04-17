@@ -8,9 +8,9 @@
 
 Standard RAG is built for similarity, not consistency. Retrieving the most relevant passage from a book does not tell you whether a proposed backstory *contradicts* the canon. This project attacks that gap directly.
 
-The core insight: narrative verification is closer to legal reasoning than document search. A claim must survive adversarial challenge, be grounded in retrieved evidence, and pass deterministic acceptance criteria — not just score high on cosine similarity.
+The core insight: narrative verification is closer to legal reasoning than document search. A claim must survive adversarial challenge, be grounded in retrieved evidence, and pass deterministic acceptance criteria  not just score high on cosine similarity.
 
-**Primary application**: Lore validation pipelines for games, fiction platforms, and fan communities — where the cost of accepting a contradictory claim is high and explainability matters.
+**Primary application**: Lore validation pipelines for games, fiction platforms, and fan communities  where the cost of accepting a contradictory claim is high and explainability matters.
 
 ---
 
