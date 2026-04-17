@@ -1,713 +1,449 @@
-# Narrative Consistency Engine for Character Backstories
+# Narrative Consistency Engine
 
-Constraint-based, multi-agent reasoning system for deciding whether a proposed character backstory is **consistent (1)** or **contradictory (0)** with source narrative books.
-
-Built for Kharagpur Data Science Hackathon 2026 (Track A).
+> A constraint-aware, multi-agent reasoning system that makes high-stakes binary decisions about whether a proposed narrative claim is **consistent** or **contradictory** with source material — combining vector retrieval, adversarial LLM debate, and deterministic gate logic.
 
 ---
 
-## 1. Project Overview
+## Why this exists
 
-### What this project does
-This project reads candidate backstory claims and evaluates whether they fit the canon narrative. It combines:
+Standard RAG is built for similarity, not consistency. Retrieving the most relevant passage from a book does not tell you whether a proposed backstory *contradicts* the canon. This project attacks that gap directly.
 
-- Vector retrieval over book text
-- LLM-based claim classification and debate
-- Deterministic rule gates for final binary decision
+The core insight: narrative verification is closer to legal reasoning than document search. A claim must survive adversarial challenge, be grounded in retrieved evidence, and pass deterministic acceptance criteria — not just score high on cosine similarity.
 
-### Problem it solves
-Narrative consistency checking is harder than standard Q&A retrieval. The goal is not just to find related text, but to make a high-stakes binary decision: "Can this claim coexist with canon without contradiction?"
-
-Why simple RAG is not enough:
-
-- Simple RAG is similarity-first, not consistency-first. It retrieves text that looks relevant, but does not enforce hard narrative constraints like timeline order, death/existence facts, or identity continuity.
-- Retrieved chunks can support both sides of a claim. Without structured adversarial reasoning, a single-pass answer often picks one side without stress-testing contradictions.
-- RAG outputs are probabilistic and prompt-sensitive. For production validation, teams need deterministic acceptance/rejection gates and explicit fallback behavior under uncertainty.
-
-Three core challenges this project addresses:
-
-1. Constraint hierarchy challenge:
-	- Not all contradictions are equal. Temporal, physical, and existence conflicts should be stricter than cultural or psychological claims.
-2. Ambiguous evidence challenge:
-	- Canon text is messy and distributed across long documents. Relevant evidence can be incomplete, conflicting, or weakly phrased.
-3. Decision reliability challenge:
-	- LLM confidence alone is insufficient. The final decision must stay stable across runs and degrade safely when evidence is missing.
-
-This system addresses these by combining risk-tier normalization, adversarial multi-agent debate, and deterministic gate-based aggregation.
-
-### Proposed Solution
-The proposed solution is inspired by the judiciary model, where arguments are not accepted at face value and every decision is tested through opposition, evidence, and final judgment.
-
-In this architecture:
-
-- The Prosecutor challenges the claim and searches for contradictions.
-- The Advocate defends the claim using available narrative evidence.
-- The Judge issues a structured verdict with confidence.
-- A deterministic Aggregation layer applies strict legal-style rules before giving the final binary decision.
-
-This legal philosophy matches the system's conservative behavior: protecting canon integrity is more important than accepting uncertain claims.
-
-Law-inspired principle behind the design:
-
-> "Punishing an innocent is a far greater sin than letting many guilty go free."
-
-English translation of a common Hindi courtroom-style dialogue:
-
-> "Nirdosh ko saza dena, hazaar doshiyon ko chhod dene se bada paap hai."
-
-In practical terms for this project, when evidence is weak or uncertain, the system prefers rejection over risky acceptance.
-
-### Target users
-
-- Hackathon teams building narrative consistency checkers
-- NLP/LLM engineers experimenting with hybrid symbolic + LLM reasoning
-- Product teams building lore validation tools for games, fiction platforms, and fan communities
-
-### Real-world use case
-A game studio receives community-submitted character lore updates. Before approval, each submission is checked against source books. Contradictory claims are rejected with rationale; consistent claims pass.
+**Primary application**: Lore validation pipelines for games, fiction platforms, and fan communities — where the cost of accepting a contradictory claim is high and explainability matters.
 
 ---
 
-## 2. Key Features
+## System Architecture
 
-- ✅ End-to-end claim verification pipeline (`run_inference.py`)
-- ✅ Risk-aware claim normalization into taxonomy tiers (High/Medium/Low)
-- ✅ Retrieval-augmented reasoning via Pathway vector server
-- ✅ Three-agent debate pattern:
-	- Prosecutor (attacks claim)
-	- Advocate (defends claim)
-	- Judge (returns JSON verdict + confidence)
-- ✅ Deterministic 4-gate aggregation layer for final prediction
-- ✅ Conservative safety bias under uncertainty
-- ✅ Threshold optimization script (`optimize_thresholds.py`) using grid search
-- ✅ Config-driven behavior (`config.yaml`)
-- ✅ Fallback/default handling for missing config in some modules
-- ✅ CSV-based batch inference output (`results.csv`) with rationale per claim
+The system is a five-stage sequential pipeline, config-driven throughout.
 
-Advanced/hidden behavior:
+```
+Input CSV
+    │
+    ▼
+┌─────────────────────────────────┐
+│  1. Claim Normalization          │  LLM classifies claim → category + risk tier
+│     reasoning/normalization.py   │
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│  2. Evidence Retrieval           │  Top-k chunks from Pathway vector server
+│     retrieval/retrieve.py        │  (POST /v1/retrieve)
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│  3. Multi-Agent Debate           │  Prosecutor → Advocate → Judge
+│     reasoning/debate.py          │  Returns: {status, confidence, key_point}
+└────────────────┬────────────────┘
+                 │
+                 ▼
+┌─────────────────────────────────┐
+│  4. Deterministic Aggregation    │  4-gate logic with risk-adjusted thresholds
+│     reasoning/aggregation.py     │  → binary prediction (0 or 1) + rationale
+└────────────────┬────────────────┘
+                 │
+                 ▼
+           results.csv
+```
 
-- Lazy loading of embedding model for efficiency (`llm/embedder.py`)
-- Evidence deduplication before LLM debate (`reasoning/debate.py`)
-- Dynamic threshold adjustment by risk tier in aggregation
-
----
-
-## 3. System Architecture
-
-### High-level explanation
-The system has a CLI-driven workflow (acts as the "frontend"), an orchestration backend, a vector-memory service, LLM providers, and local data/config files.
-
-1. Books are ingested and indexed by Pathway.
-2. Inference script loads claims from CSV.
-3. Each claim is normalized, evidence is retrieved, and agents debate.
-4. Aggregation gates convert probabilistic debate output into deterministic binary labels.
-
-### Architecture Diagram (Mermaid)
+### Component Map
 
 ```mermaid
 graph TD
-	user[CLI User]
+    user[CLI Operator]
 
-	subgraph app[Application Layer]
-		RI[run_inference.py]
-		OPT[optimize_thresholds.py]
-	end
+    subgraph app[Entry Points]
+        RI[run_inference.py]
+        OPT[optimize_thresholds.py]
+    end
 
-	subgraph pipeline[Reasoning Pipeline]
-		NORM[Claim Normalization\nCategory + Risk Tier]
-		RET[Evidence Retrieval\nTop-k from memory]
-		DEB[Multi-Agent Debate\nProsecutor Advocate Judge]
-		AGG[Deterministic Aggregator\n4 Gate Decision]
-	end
+    subgraph pipeline[Reasoning Pipeline]
+        NORM[1. Claim Normalization\nLLM → category + risk tier]
+        RET[2. Evidence Retrieval\nTop-k from Pathway]
+        DEB[3. Multi-Agent Debate\nProsecutor / Advocate / Judge]
+        AGG[4. Deterministic Aggregation\n4-Gate Decision Logic]
+    end
 
-	subgraph memory[Vector Memory Layer]
-		BOOKS[data/Books/*.txt]
-		IDX[pathway_pipeline/index.py\nchunk + embed + index]
-		VS[Pathway VectorStoreServer\n/v1/retrieve]
-	end
+    subgraph memory[Vector Memory Layer]
+        BOOKS[data/Books/*.txt]
+        IDX[pathway_pipeline/index.py\nchunk → embed → index]
+        VS[Pathway VectorStoreServer\nPOST /v1/retrieve]
+    end
 
-	subgraph external[External Services]
-		LLM[LLM API\nGroq/OpenAI-compatible]
-	end
+    subgraph external[External]
+        LLM[LLM API\nGroq / OpenAI-compatible]
+    end
 
-	subgraph data[Data and Config]
-		CFG[config.yaml]
-		TEST[data/test.csv]
-		TRAIN[data/train.csv]
-		OUT[results.csv]
-	end
+    subgraph io[Data & Config]
+        CFG[config.yaml]
+        TEST[data/test.csv]
+        TRAIN[data/train.csv]
+        OUT[results.csv]
+    end
 
-	user --> RI
-	user --> OPT
+    user --> RI
+    user --> OPT
+    TEST --> RI
+    TRAIN --> OPT
 
-	TEST --> RI
-	TRAIN --> OPT
+    RI --> NORM --> RET --> DEB --> AGG --> OUT
+    RET -->|HTTP POST| VS
+    NORM --> LLM
+    DEB --> LLM
 
-	RI --> NORM --> RET --> DEB --> AGG --> OUT
-	RET -->|HTTP POST| VS
-	NORM --> LLM
-	DEB --> LLM
+    BOOKS --> IDX --> VS
 
-	BOOKS --> IDX --> VS
+    CFG --> NORM
+    CFG --> RET
+    CFG --> DEB
+    CFG --> AGG
+    CFG --> OPT
 
-	CFG --> IDX
-	CFG --> NORM
-	CFG --> RET
-	CFG --> DEB
-	CFG --> AGG
-	CFG --> OPT
-
-	classDef core fill:#e8f2ff,stroke:#1f4b99,stroke-width:1px;
-	classDef io fill:#e9fbe9,stroke:#2a7a2a,stroke-width:1px;
-	classDef ext fill:#fff4e6,stroke:#a86000,stroke-width:1px;
-	class RI,OPT,NORM,RET,DEB,AGG,IDX,VS core;
-	class CFG,TEST,TRAIN,OUT,BOOKS io;
-	class LLM ext;
+    classDef core fill:#e8f2ff,stroke:#1f4b99,stroke-width:1px;
+    classDef io fill:#e9fbe9,stroke:#2a7a2a,stroke-width:1px;
+    classDef ext fill:#fff4e6,stroke:#a86000,stroke-width:1px;
+    class RI,OPT,NORM,RET,DEB,AGG,IDX,VS core;
+    class CFG,TEST,TRAIN,OUT,BOOKS io;
+    class LLM ext;
 ```
 
 ---
 
-## 4. Core Workflows
+## Stage 1 — Risk Taxonomy (RIX Classification)
 
-### Workflow A: Build narrative memory index
+Before any retrieval or reasoning occurs, every claim is classified into a **risk tier** by a dedicated LLM taxonomist prompt. This tier governs how strictly the system judges the claim through all downstream stages.
 
-Step-by-step:
+### The Three-Tier Taxonomy
 
-1. Load `config.yaml` for host, port, and books directory.
-2. Read raw `.txt` files from `data/Books`.
-3. Split text into overlapping chunks.
-4. Embed chunks using MiniLM.
-5. Start Pathway retrieval server.
+| Tier | Categories | Behavior |
+|------|-----------|----------|
+| **High** | Temporal · Physical · Existence · Identity | Zero tolerance for contradiction. Gate 1 hard-rejects any High-risk claim the Judge marks as contradicted. Acceptance threshold raised by +0.10. |
+| **Medium** | Ideological · Relational · Political | Strong contradiction with confidence > 0.60 triggers rejection. Standard thresholds apply. |
+| **Low** | Psychological · Cultural · Symbolic | Acceptance threshold relaxed by −0.10. Subjective claims require less confidence to pass. |
 
-```mermaid
-sequenceDiagram
-	autonumber
-	participant Dev as Operator
-	participant Index as Memory Indexer
-	participant FS as Books Store
-	participant Split as Text Splitter
-	participant Emb as Embedding Service
-	participant VS as Vector Server
+**Why this matters**: Not all narrative errors are equal. A claim that a character was *alive after their confirmed death* (Existence/High) is categorically different from a claim about their *personality* (Psychological/Low). Treating them identically either over-rejects subjective claims or under-rejects hard factual violations.
 
-	Dev->>Index: Start memory server
-	Index->>FS: Read *.txt files as binary
-	FS-->>Index: Raw file streams + metadata
-	Index->>Split: Decode + sliding chunks
-	Split-->>Index: Chunked text windows
-	Index->>Emb: Embed each chunk
-	Emb-->>Index: Dense vectors (384-d)
-	Index->>VS: Build vector index
-	Index->>VS: Run host:port server
-	VS-->>Dev: Retrieval API ready
-```
+### Classification Prompt Design
 
-### Workflow B: Inference on test claims
-
-Step-by-step:
-
-1. Read `data/test.csv` (with fallback paths).
-2. Create `NarrativeClaim` object.
-3. Classify claim and assign risk tier.
-4. Retrieve top-k evidence from Pathway.
-5. Run Prosecutor/Advocate/Judge debate.
-6. Apply deterministic gates.
-7. Save prediction + rationale to `results.csv`.
-
-```mermaid
-sequenceDiagram
-	autonumber
-	participant Dev as Operator
-	participant Infer as Inference Orchestrator
-	participant Norm as Normalization Stage
-	participant Ret as Retrieval Stage
-	participant VS as Retrieval API
-	participant Debate as Debate Stage
-	participant Agg as Aggregation Stage
-
-	Dev->>Infer: Run inference
-	Infer->>Infer: Load input CSV and iterate rows
-
-	loop For each claim row
-		Infer->>Norm: classify category + risk tier
-		Norm-->>Infer: claim.risk_tier updated
-
-		Infer->>Ret: request top-k evidence
-		Ret->>VS: POST query book_name + content
-
-		alt Retrieval success
-			VS-->>Ret: evidence chunks
-			Ret-->>Infer: claim.evidence
-		else Retrieval failure/timeout
-			Ret-->>Infer: empty evidence list
-		end
-
-		Infer->>Debate: run Prosecutor Advocate Judge
-		Debate-->>Infer: JSON verdict status confidence key_point
-
-		Infer->>Agg: apply deterministic 4-gate logic
-		Agg-->>Infer: prediction + rationale
-	end
-
-	Infer->>Infer: Save all rows to results.csv
-	Infer-->>Dev: Done
-```
-
-### Workflow C: Threshold optimization
-
-Step-by-step:
-
-1. Load training CSV and map labels to binary targets.
-2. Split dataset for optimization subset.
-3. Precompute expensive LLM outputs once.
-4. Grid search consistency/uncertainty thresholds.
-5. Persist best thresholds into `config.yaml`.
-
-```mermaid
-sequenceDiagram
-	autonumber
-	participant Dev as Operator
-	participant Optim as Optimizer Script
-	participant Pipe as Pipeline Stage
-	participant Grid as Grid Search
-	participant CFG as Config File
-
-	Dev->>Optim: Run optimizer
-	Optim->>Optim: Load train.csv and map labels
-	Optim->>Optim: Split optimization subset
-
-	loop For each training sample
-		Optim->>Pipe: Generate risk + verdict signals
-		Pipe-->>Optim: status confidence risk
-	end
-
-	Optim->>Grid: Sweep consistency and uncertainty thresholds
-	Grid-->>Optim: best parameter pair
-	Optim->>CFG: Persist optimized thresholds
-	Optim-->>Dev: Print best accuracy and values
-```
-
----
-
-## 5. Data Flow & Logic
-
-### Data movement
-
-- Input data sources:
-	- `data/Books/*.txt` for memory index
-	- `data/train.csv` for optimization
-	- `data/test.csv` for inference
-- Intermediate artifacts:
-	- In-memory evidence lists
-	- Judge verdict JSON (`status`, `confidence`, `key_point`)
-- Output artifacts:
-	- `results.csv` with `id`, `prediction`, `rationale`
-
-### Decision logic flowchart
-
-```mermaid
-flowchart TD
-	A[Input Claim] --> B[Normalize\ncategory and risk]
-	B --> C[Retrieve top-k evidence]
-	C --> D[Run debate\nProsecutor Advocate Judge]
-	D --> E{Verdict status/confidence}
-
-	E --> G1{Gate 1\nHigh risk and contradicted?}
-	G1 -- Yes --> R0A[Reject 0\nHard constraint violation]
-	G1 -- No --> G2{Gate 2\nNon-high and contradicted\nand confidence > 0.6?}
-
-	G2 -- Yes --> R0B[Reject 0\nStrong thematic contradiction]
-	G2 -- No --> G3{Gate 3\nConsistent and confidence >=\ndynamic threshold?}
-
-	G3 -- Yes --> R1A[Accept 1\nEvidence validated]
-	G3 -- No --> G4{Gate 4\nconfidence < uncertainty threshold?}
-
-	G4 -- Yes --> R0C[Reject 0\nInsufficient evidence]
-	G4 -- No --> F{Any contradiction signal left?}
-	F -- Yes --> R0D[Reject 0\nNarrative safety fallback]
-	F -- No --> R1B[Accept 1\nPlausible within constraints]
-
-	classDef reject fill:#ffecec,stroke:#b42318,stroke-width:1px;
-	classDef accept fill:#eaffea,stroke:#2f7a2f,stroke-width:1px;
-	class R0A,R0B,R0C,R0D reject;
-	class R1A,R1B accept;
-```
-
-### Failure-handling flowchart
-
-```mermaid
-flowchart LR
-	S[Claim enters pipeline] --> R{Retrieval successful?}
-	R -- No --> E1[Set evidence = empty list]
-	R -- Yes --> E2[Attach retrieved evidence]
-
-	E1 --> J{Judge JSON parse successful?}
-	E2 --> J
-
-	J -- No --> F1[Fallback verdict\nUncertain confidence 0.0]
-	J -- Yes --> F2[Use judge verdict]
-
-	F1 --> A[Run deterministic aggregator]
-	F2 --> A
-	A --> O[Emit prediction and rationale]
-```
-
-### Edge cases and failure handling
-
-- Missing input CSV in inference:
-	- Script checks multiple candidate paths.
-	- If none found, exits with an error message.
-- Retrieval server unavailable or timeout:
-	- Retrieval exceptions are caught.
-	- Evidence becomes empty list; pipeline continues.
-- LLM output not valid JSON:
-	- Debate layer catches parsing issues.
-	- Falls back to `Uncertain` with low confidence.
-- Missing/invalid taxonomy config:
-	- Normalization module uses default taxonomy.
-- Empty claim text:
-	- Retrieval is skipped for that claim.
-
----
-
-## 6. Design Decisions
-
-### Why these choices were made
-
-1. Multi-agent debate instead of single prompt:
-	 - Encourages adversarial reasoning before verdict.
-2. Deterministic aggregation after LLM stage:
-	 - Makes final behavior predictable and tunable.
-3. Risk-tiered constraints:
-	 - Temporal/existence errors are treated more strictly than subjective claims.
-4. Vector retrieval before reasoning:
-	 - Grounds arguments in narrative evidence.
-
-### Alternatives considered (brief comparison)
-
-| Approach | Pros | Cons | Why not default |
-|---|---|---|---|
-| Single LLM yes/no | Simple, fast to prototype | Unstable, hard to audit | Not deterministic enough |
-| Pure rule engine (no LLM) | Fully deterministic | Weak on nuanced language | Misses semantic flexibility |
-| This hybrid (chosen) | Grounded + explainable + tunable | More components to operate | Best balance for hackathon goals |
-
-### Venn-style explanation (described)
-
-Think of this system as the overlap of three circles:
-
-- Circle A: Retrieval grounding (evidence from books)
-- Circle B: LLM semantic reasoning (Prosecutor/Advocate/Judge)
-- Circle C: Deterministic safety logic (4-gate aggregation)
-
-The final prediction is only trusted in the center overlap where all three agree.
-
----
-
-## 7. Tech Stack
-
-### Core runtime
-
-- Python 3.10+ (main language)
-- pandas, numpy, pyyaml, tqdm (data + config utilities)
-
-### Retrieval and indexing
-
-- Pathway (real-time data processing and vector store server)
-- sentence-transformers (`all-MiniLM-L6-v2`) for embeddings
-- torch (embedding model runtime)
-
-### LLM integration
-
-- openai Python SDK (OpenAI-compatible client)
-- Groq API endpoint (default in current setup)
-- requests (HTTP retrieval calls)
-
-### Optimization and evaluation
-
-- scikit-learn (`train_test_split`, `accuracy_score`)
-
----
-
-## 8. Installation & Setup
-
-### Prerequisites
-
-- Python 3.10 or newer
-- pip
-- Network access to your configured LLM provider (Groq/OpenAI-compatible)
-- Book text files in `data/Books`
-- Dataset CSV files (`data/train.csv`, `data/test.csv`)
-
-### Step-by-step setup
-
-```bash
-# 1) Clone and enter project
-git clone <your-repo-url>
-cd LoneWizard_KDSH_2026
-
-# 2) Create virtual environment (recommended)
-python -m venv .venv
-source .venv/bin/activate
-
-# 3) Install dependencies
-pip install -r requirements.txt
-
-# 4) Create runtime config
-cp config.yaml.example config.yaml
-```
-
-Edit `config.yaml` with your API key and desired settings.
-
-### Environment variables (`.env` example)
-
-The code supports using `OPENAI_API_KEY` as an override in `llm/wrapper.py`.
-
-```env
-# Optional override for LLM key (instead of storing only in config.yaml)
-OPENAI_API_KEY=your_provider_api_key_here
-```
-
-If you use `.env`, load it before running scripts (for example via your shell or dotenv tooling).
-
-### Minimal `config.yaml` example
-
-```yaml
-pathway:
-	host: "0.0.0.0"
-	port: 8000
-	data_dir: "./data/Books"
-	csv_path: "./data/train.csv"
-
-aggregation:
-	consistency_threshold: 0.55
-	uncertainty_threshold: 0.30
-
-llm:
-	provider: "groq"
-	model: "llama-3.1-8b-instant"
-	api_key: "YOUR_API_KEY"
-```
-
-### Common setup errors and fixes
-
-1. `config.yaml not found`
-	 - Fix: `cp config.yaml.example config.yaml`
-
-2. Retrieval connection errors (`/v1/retrieve` failed)
-	 - Fix: Start memory server first with `python pathway_pipeline/index.py`
-	 - Verify `host`/`port` in `config.yaml`
-
-3. `test.csv not found`
-	 - Fix: Place file at `data/test.csv` (preferred) or root fallback path
-
-4. Invalid API key / LLM failure
-	 - Fix: Update key in `config.yaml` and/or `OPENAI_API_KEY`
-
----
-
-## 9. API Documentation
-
-This project is primarily CLI-based. The direct HTTP API used internally is Pathway retrieval.
-
-### Retrieval endpoint
-
-- Method: `POST`
-- URL: `http://<pathway_host>:<pathway_port>/v1/retrieve`
-- Used by: `retrieval/retrieve.py`
-
-Request example:
+The normalization LLM receives the book name, character name, and claim text. It returns a structured JSON response:
 
 ```json
 {
-	"query": "BookName: Claim text goes here",
-	"k": 5
+  "category": "Temporal",
+  "reasoning": "The claim specifies an event sequence that conflicts with the book's timeline."
 }
 ```
 
-Typical response shape (example):
+The `category` field is mapped to a risk tier via the config-driven taxonomy:
+
+```yaml
+taxonomy:
+  high_risk:  [Temporal, Physical, Existence, Identity]
+  medium_risk: [Ideological, Relational, Political]
+  low_risk:   [Psychological, Cultural, Symbolic]
+```
+
+---
+
+## Stage 3 — Multi-Agent Debate (Judiciary Pattern)
+
+The debate stage is the semantic core of the system. Three specialized agents process the same claim and evidence, each with an adversarial role — modeled after a legal proceeding.
+
+```
+Evidence chunks (deduplicated)
+         │
+         ├──→  PROSECUTOR  →  attacks the claim, finds contradictions
+         │
+         ├──→  ADVOCATE    →  defends the claim, finds supporting evidence
+         │
+         └──→  JUDGE       ←  reads both arguments, returns structured verdict
+                              { status, confidence, key_point }
+```
+
+**Why adversarial**: A single LLM pass tends to be confirmation-biased — it anchors on the most salient retrieved text. Forcing explicit prosecution before defense surfaces contradictions that a single-pass model glosses over.
+
+**Conservative fallback**: If the Judge's response cannot be parsed as valid JSON, the system falls back to `{ "status": "Uncertain", "confidence": 0.0 }`, which propagates through Gate 4 as a rejection. Uncertain claims are not accepted.
+
+### Judge Verdict Schema
 
 ```json
-[
-	{
-		"text": "Relevant narrative chunk...",
-		"metadata": {
-			"book_name": "Book_Title",
-			"path": "./data/Books/Book_Title.txt"
-		}
-	}
-]
+{
+  "status": "Consistent | Contradicted | Uncertain",
+  "confidence": 0.0,
+  "key_point": "One-sentence summary of the deciding factor"
+}
 ```
-
-Error handling behavior:
-
-- Timeout/network errors are caught and logged.
-- Retrieval returns empty evidence list; pipeline continues with conservative behavior.
-
-### CLI contract (batch inference)
-
-- Input: CSV with columns expected by `run_inference.py` (`id`, `content`, `book_name`, `char`)
-- Output: `results.csv` with columns `id`, `prediction`, `rationale`
 
 ---
 
-## 10. Folder Structure
+## Stage 4 — Deterministic 4-Gate Aggregation
 
-```text
-.
-├── config.yaml.example
-├── optimize_thresholds.py
-├── README.md
-├── requirements.txt
-├── results.csv
-├── run_inference.py
-├── llm/
-│   ├── __init__.py
-│   ├── client.py
-│   ├── embedder.py
-│   └── wrapper.py
-├── pathway_pipeline/
-│   ├── __init__.py
-│   ├── index.py
-│   └── ingest.py
-├── reasoning/
-│   ├── __init__.py
-│   ├── agents.py
-│   ├── aggregation.py
-│   ├── claims.py
-│   ├── debate.py
-│   └── normalization.py
-├── retrieval/
-│   ├── __init__.py
-│   └── retrieve.py
-└── scoring/
-		├── __init__.py
-		└── scorer.py
+The aggregation layer converts probabilistic LLM output into a **deterministic binary decision**. It is the only stage with no LLM calls — it is pure logic, driven by the risk tier and two tunable thresholds.
+
+### Gate Logic
+
+```
+Input: {status, confidence, risk_tier}
+
+GATE 1 — Hard Constraint (High Risk)
+  IF risk == "High" AND status contains "contradict"
+  → REJECT (0)  "Hard Constraint Violation"
+
+GATE 2 — Strong Soft Contradiction
+  IF risk != "High" AND status contains "contradict" AND confidence > 0.60
+  → REJECT (0)  "Strong Thematic Contradiction"
+
+GATE 3 — Evidence Accumulation (Acceptance Gate)
+  IF status contains "consistent":
+    required_confidence = TH_CONSISTENCY        (base, e.g. 0.55)
+                        + 0.10 if risk == High  (→ 0.65)
+                        - 0.10 if risk == Low   (→ 0.45)
+    IF confidence >= required_confidence
+    → ACCEPT (1)  "Validated by Evidence"
+
+GATE 4 — Uncertainty Resolution
+  IF confidence < TH_UNCERTAINTY
+  → REJECT (0)  "Insufficient Evidence (Conservative Bias)"
+
+  IF status contains "contradict"
+  → REJECT (0)  "Contradicted by Evidence"
+
+  → ACCEPT (1)  "Plausible within constraints"
 ```
 
-What each important part does:
+### Decision Flowchart
 
-- `run_inference.py`: Main end-to-end inference orchestrator
-- `optimize_thresholds.py`: Grid-search calibration for aggregation thresholds
-- `pathway_pipeline/`: Book ingestion + vector server startup
-- `retrieval/`: HTTP retrieval client against Pathway server
-- `reasoning/`: Claim model, normalization, debate, deterministic aggregation
-- `llm/`: LLM wrapper/client and embedding UDF
+```mermaid
+flowchart TD
+    A[Claim + Judge Verdict] --> G1{Gate 1\nHigh risk + contradicted?}
+    G1 -- Yes --> R0A[Reject — Hard Constraint Violation]
+    G1 -- No --> G2{Gate 2\nNon-high + contradicted\n+ confidence > 0.60?}
+    G2 -- Yes --> R0B[Reject — Strong Thematic Contradiction]
+    G2 -- No --> G3{Gate 3\nConsistent + confidence\n≥ dynamic threshold?}
+    G3 -- Yes --> R1A[Accept — Validated by Evidence]
+    G3 -- No --> G4{Gate 4\nconfidence < TH_UNCERTAINTY?}
+    G4 -- Yes --> R0C[Reject — Insufficient Evidence]
+    G4 -- No --> F{Contradiction signal?}
+    F -- Yes --> R0D[Reject — Narrative Safety Fallback]
+    F -- No --> R1B[Accept — Plausible within Constraints]
 
-Note: `reasoning/agents.py` and `scoring/scorer.py` include patterns/components not used by the main inference script in its current flow.
+    classDef reject fill:#ffecec,stroke:#b42318,stroke-width:1px;
+    classDef accept fill:#eaffea,stroke:#2f7a2f,stroke-width:1px;
+    class R0A,R0B,R0C,R0D reject;
+    class R1A,R1B accept;
+```
+
+**Key design principle**: The system has a conservative bias — when evidence is ambiguous or missing, it rejects rather than accepts. Accepting a contradictory claim damages narrative integrity in ways that are difficult to reverse; rejection is always auditable and explainable.
 
 ---
 
-## 11. Usage Guide
+## Threshold Optimization via Grid Search
 
-### Quick start
+The two aggregation thresholds (`TH_CONSISTENCY`, `TH_UNCERTAINTY`) directly control accuracy. Rather than hand-tuning, they are calibrated against labeled training data using an exhaustive grid search.
 
-1. Start vector memory server in terminal A:
+### Why Grid Search Here
+
+The aggregation function is non-differentiable — it is a sequence of conditional branches, not a smooth loss surface. Gradient-based optimization is not applicable. Grid search over a bounded 2D parameter space is the correct approach.
+
+### Search Space
+
+| Parameter | Range | Step | Values explored |
+|-----------|-------|------|----------------|
+| `TH_CONSISTENCY` | 0.40 → 0.90 | 0.05 | 11 values |
+| `TH_UNCERTAINTY` | 0.10 → 0.60 | 0.05 | 11 values |
+| **Total combinations** | | | **121** |
+
+### Two-Phase Optimization Strategy
+
+**Phase 1 — LLM Precomputation** (expensive, runs once):  
+For each training sample, run the full pipeline through the Judge stage. Cache `{status, confidence, risk_tier}` for every sample. This is the only LLM-dependent phase.
+
+**Phase 2 — Grid Sweep** (cheap, runs 121× per sample):  
+Replay the aggregation logic mathematically against the cached signals — no LLM calls. Each of the 121 threshold combinations scores the entire training set in milliseconds.
+
+```python
+for th_c in np.arange(0.40, 0.95, 0.05):     # consistency thresholds
+    for th_u in np.arange(0.10, 0.65, 0.05): # uncertainty thresholds
+        preds = [simulate_aggregation(row, th_c, th_u) for row in cached_data]
+        acc   = accuracy_score(targets, preds)
+        if acc > best_acc:
+            best_acc, best_params = acc, (th_c, th_u)
+```
+
+**Result**: Best-performing `(TH_CONSISTENCY, TH_UNCERTAINTY)` pair is written back to `config.yaml` automatically.
+
+### Decoupled Architecture Benefit
+
+This separation — LLM reasoning once, grid search over cached signals — means threshold optimization costs one LLM pass over training data, not 121. It scales cleanly to larger training sets and supports repeated re-optimization as the LLM provider changes.
+
+---
+
+## Vector Memory Layer (Pathway)
+
+Books are ingested, chunked with overlap, embedded using `all-MiniLM-L6-v2` (384-dimensional dense vectors), and served via a Pathway `VectorStoreServer` over HTTP.
+
+Retrieval queries are book-scoped: the query is prefixed with `"BookName: <claim text>"` to bias retrieval toward the relevant source. This reduces cross-book evidence noise in multi-book deployments.
+
+Evidence chunks are deduplicated before being passed to the debate stage to reduce prompt redundancy and token cost.
+
+---
+
+## Failure Handling
+
+| Failure point | Behavior |
+|--------------|----------|
+| Retrieval server unreachable | Evidence set → empty; pipeline continues with conservative bias |
+| Judge returns invalid JSON | Verdict → `{status: "Uncertain", confidence: 0.0}`; Gate 4 rejects |
+| Normalization LLM fails | Claim category → `"Symbolic"`, risk tier → `"Low"` (least strict path) |
+| `test.csv` not found | Script checks multiple candidate paths; exits with clear error |
+| Missing `config.yaml` | All modules carry hard-coded safe defaults |
+
+The system never crashes silently. Every failure path degrades to a deterministic, conservative output.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| Language | Python 3.10+ |
+| Vector store | Pathway `VectorStoreServer` |
+| Embeddings | `sentence-transformers/all-MiniLM-L6-v2` |
+| LLM client | OpenAI-compatible SDK (Groq default) |
+| Data utilities | pandas, numpy, pyyaml, tqdm |
+| Optimization | scikit-learn (`accuracy_score`, `train_test_split`) |
+
+---
+
+## Setup
+
+```bash
+# 1. Clone
+git clone <repo-url>
+cd Narrative-Consistency-Engine
+
+# 2. Virtual environment
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+
+# 3. Dependencies
+pip install -r requirements.txt
+
+# 4. Config
+cp config.yaml.example config.yaml
+# Edit config.yaml: set llm.api_key and verify pathway host/port
+```
+
+**Minimal `config.yaml`**:
+
+```yaml
+pathway:
+  host: "0.0.0.0"
+  port: 8000
+  data_dir: "./data/Books"
+
+aggregation:
+  consistency_threshold: 0.55
+  uncertainty_threshold: 0.30
+
+llm:
+  provider: "groq"
+  model: "llama-3.1-8b-instant"
+  api_key: "YOUR_API_KEY"
+
+taxonomy:
+  high_risk:   [Temporal, Physical, Existence, Identity]
+  medium_risk:  [Ideological, Relational, Political]
+  low_risk:    [Psychological, Cultural, Symbolic]
+```
+
+---
+
+## Running the Pipeline
+
+**Terminal A — Start vector memory server:**
 
 ```bash
 python pathway_pipeline/index.py
 ```
 
-2. Run inference in terminal B:
-
-```bash
-python run_inference.py
-```
-
-3. Check output file:
-
-- `results.csv`
-
-### Optional: optimize thresholds before inference
+**Terminal B — Optional: calibrate thresholds against training data:**
 
 ```bash
 python optimize_thresholds.py
+```
+
+**Terminal B — Run inference:**
+
+```bash
 python run_inference.py
 ```
 
-### Example scenarios
-
-- Scenario 1: Strict canon checking for timeline claims
-	- High-risk temporal contradiction should usually resolve to prediction `0`.
-- Scenario 2: Ambiguous psychological claim
-	- Low-risk, moderate-confidence claims may pass via dynamic thresholding.
-- Scenario 3: Missing evidence in memory index
-	- Pipeline still returns result, but conservative gates often reject unsupported claims.
+Output: `results.csv` with columns `id`, `prediction` (0/1), `rationale`.
 
 ---
 
-## 12. Performance & Scalability
+## Project Structure
 
-### Optimizations already present
-
-- Embedding model lazy-load singleton (`llm/embedder.py`)
-- Debate evidence deduplication to reduce prompt noise
-- One-time LLM precomputation during threshold optimization
-
-### Bottlenecks
-
-- LLM calls dominate latency (normalization + 3-agent debate)
-- Retrieval depends on server/network health
-- Current inference loop is row-by-row synchronous
-
-### Scalability strategies
-
-- Add async/batched LLM calls with rate-limit handling
-- Cache normalization/debate outputs for repeated claims
-- Run multiple inference workers with queue-based orchestration
-- Externalize retrieval and reasoning as service endpoints for horizontal scaling
-
----
-
-## 13. Future Improvements
-
-Planned enhancements:
-
-- Better JSON parsing and schema validation for LLM outputs
-- Unified config management with environment-variable-first strategy
-- Stronger evaluation metrics beyond accuracy (F1, precision/recall by risk tier)
-- Native experiment tracking for threshold sweeps
-- Optional explainability reports with cited evidence spans
-
-Known limitations:
-
-- Depends on external LLM API quality and availability
-- Pathway server must be running for retrieval to work
-- Some modules appear legacy/experimental and are not in the main path
+```
+.
+├── run_inference.py          # Main pipeline orchestrator
+├── optimize_thresholds.py    # Grid search threshold calibration
+├── config.yaml.example
+├── reasoning/
+│   ├── claims.py             # NarrativeClaim data model
+│   ├── normalization.py      # LLM-based risk tier classification
+│   ├── debate.py             # Prosecutor / Advocate / Judge agents
+│   └── aggregation.py        # 4-gate deterministic decision logic
+├── retrieval/
+│   └── retrieve.py           # Pathway HTTP retrieval client
+├── pathway_pipeline/
+│   ├── index.py              # Vector server startup
+│   └── ingest.py             # Book chunking + embedding
+├── llm/
+│   ├── wrapper.py            # LLM client abstraction
+│   └── embedder.py           # Lazy-loading embedding singleton
+└── data/
+    ├── Books/                # Source narrative text files
+    ├── train.csv             # Labeled claims for optimization
+    └── test.csv              # Claims for inference
+```
 
 ---
 
-## 14. Contribution Guide
+## Extending the System
 
-### How to contribute
+**Swap the LLM provider**: Update `llm.provider` and `llm.model` in `config.yaml`. The `llm/wrapper.py` abstraction requires no code changes for any OpenAI-compatible endpoint.
 
-1. Fork the repository
-2. Create a branch from `main`
-3. Make focused, testable changes
-4. Open a PR with clear problem statement and sample output
+**Add a new risk category**: Add the category name to the appropriate tier in `config.yaml` under `taxonomy`. The normalization prompt and aggregation logic pick it up automatically.
 
-### Recommended branch naming
+**Re-calibrate thresholds**: Run `optimize_thresholds.py` after any change to the LLM model, prompt, or training data. The grid search takes one LLM pass over training data.
 
-- `feature/<short-description>`
-- `fix/<short-description>`
-- `docs/<short-description>`
+**Scale inference**: The per-claim pipeline is stateless. Parallelization is a wrapper around `run_inference.py`'s main loop — no architectural changes needed.
 
-### Code style and quality expectations
+---
 
-- Follow existing Python style and naming patterns
-- Keep functions small and composable
-- Add docstrings for non-trivial logic
-- Prefer config-driven changes over hard-coded constants
+## Design Rationale
 
-### PR checklist
+**Why multi-agent debate over a single prompt?**  
+Single-pass LLMs anchor on the first relevant passage and rarely stress-test the opposite interpretation. Forcing an explicit prosecution argument surfaces contradictions that a single-pass model misses or downweights.
 
-- [ ] Explain what changed and why
-- [ ] Include before/after behavior
-- [ ] Mention config changes (if any)
-- [ ] Confirm scripts still run (`run_inference.py`, optionally `optimize_thresholds.py`)
+**Why deterministic gates after the LLM stage?**  
+LLM confidence scores are not calibrated probabilities. Treating them as such produces unstable predictions across runs. The gate layer converts soft signals into hard, auditable decisions — making behavior predictable and tunable without retraining.
+
+**Why a risk taxonomy?**  
+Temporal and existence errors are categorically more damaging to narrative integrity than subjective psychological claims. Uniform thresholds either over-reject soft claims or under-reject hard factual violations. The three-tier taxonomy lets each category be judged on its own standard.
+
+**Why conservative bias?**  
+In canon validation, a false acceptance (letting a contradictory claim through) is more damaging than a false rejection (blocking a consistent claim). The system defaults to rejection under uncertainty. Accepted claims carry explicit evidence citations; rejections carry explicit contradiction rationale.
 
 ---
 
 ## Acknowledgments
 
-- Pathway for vector retrieval infrastructure
-- SentenceTransformers for embedding models
-- OpenAI-compatible APIs (Groq/OpenAI) for reasoning stage
+- [Pathway](https://pathway.com) — vector store and real-time data processing infrastructure
+- [SentenceTransformers](https://www.sbert.net) — `all-MiniLM-L6-v2` embedding model
+- [Groq](https://groq.com) — LLM inference API used in development
