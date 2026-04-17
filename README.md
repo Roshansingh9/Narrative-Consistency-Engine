@@ -2,15 +2,15 @@
 
 > A constraint-aware, multi-agent reasoning system that makes high-stakes binary decisions about whether a proposed narrative claim is **consistent** or **contradictory** with source material — combining vector retrieval, adversarial LLM debate, and deterministic gate logic.
 
-### Sample output — 61 claims across 6 characters from 2 classic novels
+### Sample output  61 claims across 6 characters from 2 classic novels
 
 | ID | Claim (excerpt) | Prediction | Rationale |
 |----|----------------|-----------|-----------|
-| 2 | *"Paganel learned Spanish on the voyage..."* | **0 — Rejected** | Paganel learned Portuguese thinking it was Spanish |
-| 124 | *"Faria was free in 1815..."* | **0 — Rejected** | Faria was in solitary confinement in the Château d'If in 1815 |
-| 97 | *"Noirtier built immunity to poison over years..."* | **1 — Accepted** | Consistent with his survival and established canon |
-| 59 | *"Thalcave survived by hunting and tracking..."* | **1 — Accepted** | Fits Thalcave's documented skillset and survival capability |
-| 85 | *"Kai-Koumou volunteered to help the captives..."* | **0 — Rejected** | Kai-Koumou kidnapped them — no cooperation was established |
+| 2 | *"Paganel learned Spanish on the voyage..."* | **0  Rejected** | Paganel learned Portuguese thinking it was Spanish |
+| 124 | *"Faria was free in 1815..."* | **0  Rejected** | Faria was in solitary confinement in the Château d'If in 1815 |
+| 97 | *"Noirtier built immunity to poison over years..."* | **1  Accepted** | Consistent with his survival and established canon |
+| 59 | *"Thalcave survived by hunting and tracking..."* | **1  Accepted** | Fits Thalcave's documented skillset and survival capability |
+| 85 | *"Kai-Koumou volunteered to help the captives..."* | **0  Rejected** | Kai-Koumou kidnapped them — no cooperation was established |
 
 Every prediction ships with a one-sentence rationale grounded in retrieved evidence. Full output: [`results.csv`](results.csv).
 
@@ -18,7 +18,7 @@ Every prediction ships with a one-sentence rationale grounded in retrieved evide
 
 ## Quick start — runs in under 5 minutes
 
-The repo includes a self-contained sample: a short synthetic narrative (`data/Books/The_Chronicles_of_Aldric.txt`) and 5 test claims (`data/test.csv`) with known expected outputs — so you can verify the system end-to-end without sourcing any external data.
+The repo includes a self-contained sample: a short synthetic narrative (`data/Books/The_Chronicles_of_Aldric.txt`) and 5 test claims (`data/test.csv`) with known expected outputs  so you can verify the system end-to-end without sourcing any external data.
 
 ```bash
 # Terminal A — start vector memory server
@@ -187,7 +187,7 @@ taxonomy:
 
 ## Stage 3 — Multi-Agent Debate (Judiciary Pattern)
 
-The debate stage is the semantic core of the system. Three specialized agents process the same claim and evidence, each with an adversarial role — modeled after a legal proceeding.
+The debate stage is the semantic core of the system. Three specialized agents process the same claim and evidence, each with an adversarial role  modeled after a legal proceeding.
 
 ```
 Evidence chunks (deduplicated)
@@ -200,7 +200,7 @@ Evidence chunks (deduplicated)
                               { status, confidence, key_point }
 ```
 
-**Why adversarial**: A single LLM pass tends to be confirmation-biased — it anchors on the most salient retrieved text. Forcing explicit prosecution before defense surfaces contradictions that a single-pass model glosses over.
+**Why adversarial**: A single LLM pass tends to be confirmation-biased , it anchors on the most salient retrieved text. Forcing explicit prosecution before defense surfaces contradictions that a single-pass model glosses over.
 
 **Conservative fallback**: If the Judge's response cannot be parsed as valid JSON, the system falls back to `{ "status": "Uncertain", "confidence": 0.0 }`, which propagates through Gate 4 as a rejection. Uncertain claims are not accepted.
 
@@ -218,7 +218,7 @@ Evidence chunks (deduplicated)
 
 ## Stage 4 — Deterministic 4-Gate Aggregation
 
-The aggregation layer converts probabilistic LLM output into a **deterministic binary decision**. It is the only stage with no LLM calls — it is pure logic, driven by the risk tier and two tunable thresholds.
+The aggregation layer converts probabilistic LLM output into a **deterministic binary decision**. It is the only stage with no LLM calls , it is pure logic, driven by the risk tier and two tunable thresholds.
 
 ### Gate Logic
 
@@ -273,7 +273,7 @@ flowchart TD
     class R1A,R1B accept;
 ```
 
-**Key design principle**: The system has a conservative bias — when evidence is ambiguous or missing, it rejects rather than accepts. Accepting a contradictory claim damages narrative integrity in ways that are difficult to reverse; rejection is always auditable and explainable.
+**Key design principle**: The system has a conservative bias . when evidence is ambiguous or missing, it rejects rather than accepts. Accepting a contradictory claim damages narrative integrity in ways that are difficult to reverse; rejection is always auditable and explainable.
 
 ---
 
@@ -283,7 +283,7 @@ The two aggregation thresholds (`TH_CONSISTENCY`, `TH_UNCERTAINTY`) directly con
 
 ### Why Grid Search Here
 
-The aggregation function is non-differentiable — it is a sequence of conditional branches, not a smooth loss surface. Gradient-based optimization is not applicable. Grid search over a bounded 2D parameter space is the correct approach.
+The aggregation function is non-differentiable  it is a sequence of conditional branches, not a smooth loss surface. Gradient-based optimization is not applicable. Grid search over a bounded 2D parameter space is the correct approach.
 
 ### Search Space
 
@@ -299,7 +299,7 @@ The aggregation function is non-differentiable — it is a sequence of condition
 For each training sample, run the full pipeline through the Judge stage. Cache `{status, confidence, risk_tier}` for every sample. This is the only LLM-dependent phase.
 
 **Phase 2 — Grid Sweep** (cheap, runs 121× per sample):  
-Replay the aggregation logic mathematically against the cached signals — no LLM calls. Each of the 121 threshold combinations scores the entire training set in milliseconds.
+Replay the aggregation logic mathematically against the cached signals  no LLM calls. Each of the 121 threshold combinations scores the entire training set in milliseconds.
 
 ```python
 for th_c in np.arange(0.40, 0.95, 0.05):     # consistency thresholds
@@ -314,7 +314,7 @@ for th_c in np.arange(0.40, 0.95, 0.05):     # consistency thresholds
 
 ### Decoupled Architecture Benefit
 
-This separation — LLM reasoning once, grid search over cached signals — means threshold optimization costs one LLM pass over training data, not 121. It scales cleanly to larger training sets and supports repeated re-optimization as the LLM provider changes.
+This separation  LLM reasoning once, grid search over cached signals — means threshold optimization costs one LLM pass over training data, not 121. It scales cleanly to larger training sets and supports repeated re-optimization as the LLM provider changes.
 
 ---
 
