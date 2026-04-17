@@ -481,6 +481,88 @@ In canon validation, a false acceptance (letting a contradictory claim through) 
 
 ---
 
+## Contributing
+
+Contributions are welcome — bug fixes, new risk categories, improved prompts, or alternative LLM backends.
+
+### What makes a good contribution here
+
+This project is built around three invariants that any change should preserve:
+
+1. **Conservative bias** — when in doubt, reject. Don't loosen gates without evidence from the training set.
+2. **Determinism after the LLM stage** — the aggregation layer must stay free of stochastic calls. Keep LLM calls upstream of `aggregation.py`.
+3. **Config-driven behavior** — thresholds, taxonomy, and provider settings live in `config.yaml`, not hardcoded in logic.
+
+### Getting started
+
+```bash
+git clone https://github.com/Roshansingh9/Narrative-Consistency-Engine.git
+cd Narrative-Consistency-Engine
+git checkout -b feature/your-change
+```
+
+Run the sample end-to-end before and after your change to confirm nothing regressed:
+
+```bash
+python pathway_pipeline/index.py   # Terminal A
+python run_inference.py            # Terminal B — check results.csv
+```
+
+### Branch naming
+
+| Type | Pattern |
+|------|---------|
+| New feature | `feature/<short-description>` |
+| Bug fix | `fix/<short-description>` |
+| Prompt / taxonomy tuning | `tune/<what-changed>` |
+| Docs | `docs/<short-description>` |
+
+### Pull request checklist
+
+- [ ] Describe *what* changed and *why* (not just how)
+- [ ] Include before/after output rows from `results.csv` if the change affects predictions
+- [ ] If you modified thresholds, run `optimize_thresholds.py` and report the accuracy delta
+- [ ] Confirm `run_inference.py` completes without errors on the sample data
+
+### Areas where contributions are most useful
+
+- **Prompt hardening** — the normalization and judge prompts are the most fragile part of the pipeline. Better JSON extraction, structured output enforcement, or few-shot examples would directly improve reliability.
+- **Async inference** — the main loop in `run_inference.py` is synchronous. A batched/async version with rate-limit handling would significantly cut wall-clock time.
+- **Evaluation metrics** — the optimizer currently tracks accuracy only. Precision/recall split by risk tier would give a much clearer picture of where the system fails.
+- **New LLM backends** — `llm/wrapper.py` wraps an OpenAI-compatible client. Adding native support for Anthropic, Mistral, or local Ollama endpoints would broaden deployment options.
+
+---
+
+## License
+
+This project is licensed under the **MIT License**.
+
+```
+MIT License
+
+Copyright (c) 2026 Roshan Kr Singh
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
+---
+
 ## Acknowledgments
 
 - [Pathway](https://pathway.com) — vector store and real-time data processing infrastructure
